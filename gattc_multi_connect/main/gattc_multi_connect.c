@@ -24,74 +24,88 @@
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
+    
+     /*msg_id được sử dụng để lưu trữ ID của yêu cầu subscribe và kiểm tra xem subscribe có thành công hay không.
+    Tuy nhiên, trong trường hợp sử dụng ThingsBoard:
+
+        Gateway chỉ cần PUBLISH dữ liệu lên ThingsBoard (one-way communication)
+        Không cần SUBSCRIBE vì ThingsBoard sẽ tự động nhận và xử lý dữ liệu từ các thiết bị
+        Các message ID từ events (như trong event->msg_id) vẫn có sẵn nếu cần kiểm tra*/
+
     // ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id= %d", base, event_id);
     esp_mqtt_event_handle_t event = event_data;
     esp_mqtt_client_handle_t client = event->client;
-    int msg_id;
+    
     switch ((esp_mqtt_event_id_t)event_id) {
     case MQTT_EVENT_CONNECTED:
-        ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-        msg_id = esp_mqtt_client_subscribe(client, "/device/pub/ID=0002", 1);
-        ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
-
+        ESP_LOGI(TAG, "MQTT Connected to ThingsBoard!!");//Khong nen subcribe ma chi can publish  
         break;
+        
     case MQTT_EVENT_DISCONNECTED:
-        ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
-        break;
+            ESP_LOGI(TAG, "MQTT Disconnected from ThingsBoard!");
+            // co the them logic reconnectreconnect
+            break;
 
-    case MQTT_EVENT_SUBSCRIBED:
+   /* case MQTT_EVENT_SUBSCRIBED:
         ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
         ESP_LOGI(TAG, "sent publish successful");
         break;
     case MQTT_EVENT_UNSUBSCRIBED:
         ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
-        break;
+        break; */
+        
     case MQTT_EVENT_PUBLISHED:
-        ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
+        ESP_LOGI(TAG, "Data published to ThingsBoard successfully, msg_id=%d", event->msg_id);
         break;
-    case MQTT_EVENT_DATA:
+
+    /*  case MQTT_EVENT_DATA:
         ESP_LOGI(TAG, "MQTT_EVENT_DATA");
         printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
-        break;
-    case MQTT_EVENT_ERROR:
-        ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
-        if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
-            ESP_LOGI(TAG, "Last error code reported from esp-tls: 0x%x", event->error_handle->esp_tls_last_esp_err);
-            ESP_LOGI(TAG, "Last tls stack error number: 0x%x", event->error_handle->esp_tls_stack_err);
-            ESP_LOGI(TAG, "Last captured errno : %d (%s)",  event->error_handle->esp_transport_sock_errno,
-                     strerror(event->error_handle->esp_transport_sock_errno));
-        } else if (event->error_handle->error_type == MQTT_ERROR_TYPE_CONNECTION_REFUSED) {
-            ESP_LOGI(TAG, "Connection refused error: 0x%x", event->error_handle->connect_return_code);
-        } else {
-            ESP_LOGW(TAG, "Unknown error type: 0x%x", event->error_handle->error_type);
-        }
-        break;
+        break; 
+        */
+
+         case MQTT_EVENT_ERROR:
+            ESP_LOGI(TAG, "MQTT Error occurred");
+            if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
+                ESP_LOGI(TAG, "Last error code reported from esp-tls: 0x%x", event->error_handle->esp_tls_last_esp_err);
+                ESP_LOGI(TAG, "Last tls stack error number: 0x%x", event->error_handle->esp_tls_stack_err);
+                ESP_LOGI(TAG, "Last captured errno : %d (%s)", 
+                        event->error_handle->esp_transport_sock_errno,
+                        strerror(event->error_handle->esp_transport_sock_errno));
+            }
+            break;
     default:
         ESP_LOGI(TAG, "Other event id:%d", event->event_id);
         break;
     }
 }
 
+//Định nghĩa mqtt broker url
+#define MQTT_BROKER_URI "mqtt://demo.thingsboard.io:1883"
 
-#define MQTT_BROKER_URI "mqtt://white-dev.aithings.vn:1883"
+//Dưới đây là phần cấu hình mqtt clientclient
  const esp_mqtt_client_config_t esp_mqtt_client_config = {
         .broker = {
             .address.uri= MQTT_BROKER_URI,
             //.verification.certificate = "",
         },
         
-       // .credentials = {
-          //  .client_id = MQTT_CLIENT_ID,
+       .credentials = {
+          // .client_id = MQTT_CLIENT_ID,
           //  .username  = MQTT_CLIENT_USERNAME,
-          //  .authentication.password = MQTT_CLIENT_PASSWORD,
-        //},
-    };
+          .authentication={
+            .password = ''Access_token'', //AT tu thigsboard
+          },
+          .client_id = "ESP32_GATEWAY"
+    }
+ };
 
 
 esp_mqtt_client_handle_t client;
 /**
  * @brief: Initialize MQTT configuration clinet
 */
+//Khởi tạo mqtt clientclient
 void MQTT_client_init(void){
     client = esp_mqtt_client_init(&esp_mqtt_client_config);
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
@@ -105,6 +119,7 @@ void MQTT_client_init(void){
  * @param TOPIC : Topic publish to MQTT
  * @param QOS : quality of service, 1,2,3
 */
+//hàm publish mqtt 
 void mqtt_client_publish(char* TOPIC,int QOS, char *data){
      if(QOS >= 0 && QOS <= 2){
        esp_mqtt_client_publish(client,TOPIC,data,strlen(data),QOS,true);
@@ -434,10 +449,36 @@ static void gattc_profile_a_event_handler(esp_gattc_cb_event_t event, esp_gatt_i
         }
         break;
     }
+
+
+
+
+    //Change Can them code de publish data on the thingsboard
     case ESP_GATTC_NOTIFY_EVT:
         connid_handle(param->notify.conn_id);
         ESP_LOGI(GATTC_TAG, "ESP_GATTC_NOTIFY_EVT, Receive notify value of node %d  ", current_node);
         
+
+    // Parse dw lieu nhan duoc tu sensor
+    char sensor_data[100];
+    memcpy(sensor_data, param->notify.value,param->notify.value_len);
+    sensor_data[param->notify.value_len] = '\0';
+
+
+    //Dinh dang JSON cho thingsboard
+    char json_data[200];
+    float temperature, humidity;
+    scanf(sensor_data, "%f,%f", &temperature, &humidity);
+    sprintf(json_data, "{\"temperature\":%.1f,\"humidity\":%.1f}", temperature, humidity);
+    //Topic cho thingsboard telemetry
+    char topic[100];
+    sprintf(topic, "v1/devices/me/telemetry");
+
+    //Publish len thingsboard
+    mqtt_client_publish(topic, 1, json_data);
+
+
+/*
        // esp_log_buffer_hex("Address : ", p_data->open.remote_bda, sizeof(esp_bd_addr_t));
        esp_log_buffer_hex(GATTC_TAG, p_data->notify.value, p_data->notify.value_len);
         
@@ -447,6 +488,9 @@ static void gattc_profile_a_event_handler(esp_gattc_cb_event_t event, esp_gatt_i
             p_data->notify.value[i] = 0x00;
             param->notify.value[i] = 0x00;
         }
+        */
+
+       //Gui ACK ve cho sensor
         uint8_t * ack = (uint8_t *) "ack";
         esp_ble_gattc_write_char( remote_device[current_node].gattc,
                                   remote_device[current_node].conn_id,
@@ -690,7 +734,8 @@ void app_main(void)
 
      esp_ble_gap_set_device_name("Gateway");
      
- //   MQTT_client_init();
+     MQTT_client_init();
 
 
 }
+
