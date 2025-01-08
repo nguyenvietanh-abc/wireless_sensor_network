@@ -94,7 +94,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
           // .client_id = MQTT_CLIENT_ID,
           //  .username  = MQTT_CLIENT_USERNAME,
           .authentication={
-            .password = ''Access_token'', //AT tu thigsboard
+            .password = 'Access_token', //AT tu thigsboard
           },
           .client_id = "ESP32_GATEWAY"
     }
